@@ -1,0 +1,33 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <h2>Detection History: {{ name }}</h2>
+    <p><a href="{{ url_for('index') }}">&larr; Back to Dashboard</a></p>
+
+    {% if history %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Date/Time</th>
+                    <th>Frequency (Hz)</th>
+                    <th>Peak Signal (dB)</th>
+                    <th>BPM</th>
+                    <th>Location (Lat, Lon)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for det in history %}
+                <tr>
+                    <td>{{ det.get('Date/Time', '') }}</td>
+                    <td>{{ det.get('Frequency (Hz)', '') }}</td>
+                    <td>{{ det.get('Signal Strength (dB)', '') }}</td>
+                    <td>{{ det.get('BPM', '') }}</td>
+                    <td>{{ det.get('Latitude', '') }}, {{ det.get('Longitude', '') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No history found for {{ name }}.</p>
+    {% endif %}
+{% endblock %}
