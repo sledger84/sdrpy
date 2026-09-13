@@ -1,0 +1,123 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <h2>Live Signal Stream</h2>
+    <p>View the live signal strength over time. Note: Starting the stream will temporarily pause the background tracker script.</p>
+
+    <div style="margin-bottom: 20px;">
+        <label for="target_select">Target:</label>
+        <select id="target_select">
+            <option value="cycle">Cycle All Animals</option>
+            {% for animal in animals %}
+                <option value="{{ animal }}">{{ animal }}</option>
+            {% endfor %}
+        </select>
+
+        <button id="start_btn" onclick="startStream()" style="margin-left: 10px; padding: 5px 10px; background: green; color: white; border: none; cursor: pointer;">Start Stream</button>
+        <button id="stop_btn" onclick="stopStream()" style="margin-left: 10px; padding: 5px 10px; background: red; color: white; border: none; cursor: pointer;" disabled>Stop Stream</button>
+    </div>
+
+    <div>
+        <canvas id="signalChart" width="800" height="400"></canvas>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        let eventSource = null;
+        let chart = null;
+
+        // Initialize Chart.js
+        const ctx = document.getElementById('signalChart').getContext('2d');
+        chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Signal Strength (dB)',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        display: true,
+                        title: { display: true, text: 'Time' }
+                    },
+                    y: {
+                        display: true,
+                        title: { display: true, text: 'dB' },
+                        suggestedMin: 0
+                    }
+                },
+                animation: false // Disable animation for better performance with fast updates
+            }
+        });
+
+        function startStream() {
+            const target = document.getElementById('target_select').value;
+
+            document.getElementById('start_btn').disabled = true;
+            document.getElementById('stop_btn').disabled = false;
+            document.getElementById('target_select').disabled = true;
+
+            // Clear previous data
+            chart.data.labels = [];
+            chart.data.datasets[0].data = [];
+            chart.update();
+
+            eventSource = new EventSource(`/stream_feed?target=${target}`);
+
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    console.error("Stream error:", data.error);
+                    stopStream();
+                    alert("Error: " + data.error);
+                    return;
+                }
+
+                // Add data to chart
+                chart.data.labels.push(data.time);
+                chart.data.datasets[0].data.push(data.power);
+
+                // Keep only the last 50 points
+                if (chart.data.labels.length > 50) {
+                    chart.data.labels.shift();
+                    chart.data.datasets[0].data.shift();
+                }
+
+                // Update chart title if we are cycling
+                if (target === 'cycle') {
+                     chart.data.datasets[0].label = `Signal Strength - ${data.animal} (${data.freq} Hz)`;
+                } else {
+                     chart.data.datasets[0].label = `Signal Strength - ${data.animal}`;
+                }
+
+                chart.update();
+            };
+
+            eventSource.onerror = function() {
+                console.error("EventSource failed.");
+                stopStream();
+            };
+        }
+
+        function stopStream() {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+
+            document.getElementById('start_btn').disabled = false;
+            document.getElementById('stop_btn').disabled = true;
+            document.getElementById('target_select').disabled = false;
+
+            // Optionally, we could call an endpoint to explicitly resume the background tracker here,
+            // but the SSE stream end can trigger cleanup on the server side.
+        }
+    </script>
+{% endblock %}

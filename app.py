@@ -5,8 +5,13 @@ import json
 import psutil
 import subprocess
 import sys
-from flask import Flask, render_template, request, redirect, url_for
+import time
+from datetime import datetime
+from flask import Flask, render_template, request, redirect, url_for, Response
 from dotenv import load_dotenv, set_key
+
+# Import tracker logic for the stream
+from tracker import load_config, measure_signal_strength
 
 app = Flask(__name__)
 
@@ -110,6 +115,84 @@ def start():
 def stop():
     stop_tracker()
     return redirect(url_for('index'))
+
+@app.route('/stream')
+def stream_page():
+    config = load_config()
+    animals = list(config['animals'].keys())
+    return render_template('stream.html', animals=animals)
+
+@app.route('/stream_feed')
+def stream_feed():
+    target = request.args.get('target', 'cycle')
+
+    def generate():
+        # Stop background tracker if running so it frees the SDR
+        was_running = is_tracker_running()
+        if was_running:
+            stop_tracker()
+            time.sleep(1) # wait for sdr to be freed
+
+        config = load_config()
+
+        # Determine sdr class
+        try:
+            from rtlsdr import RtlSdr
+            sdr_class = RtlSdr
+        except ImportError:
+            # Fallback to mock for testing
+            try:
+                from mock_tracker import MockRtlSdr
+                sdr_class = MockRtlSdr
+            except ImportError:
+                yield f"data: {json.dumps({'error': 'No SDR library or mock found'})}\n\n"
+                return
+
+        try:
+            sdr = sdr_class()
+            sdr.sample_rate = 2.048e6
+            sdr.gain = config['sdr_gain']
+
+            animals_to_scan = config['animals']
+            if target != 'cycle' and target in animals_to_scan:
+                animals_to_scan = {target: animals_to_scan[target]}
+
+            if not animals_to_scan:
+                yield f"data: {json.dumps({'error': 'No animals configured'})}\n\n"
+                return
+
+            # Keep yielding data
+            while True:
+                for animal, freq in animals_to_scan.items():
+                    sdr.center_freq = freq
+                    time.sleep(0.1) # settle time
+
+                    samples = sdr.read_samples(256 * 1024)
+                    power = measure_signal_strength(samples)
+
+                    data = {
+                        'time': datetime.now().strftime('%H:%M:%S'),
+                        'animal': animal,
+                        'freq': freq,
+                        'power': float(power)
+                    }
+
+                    yield f"data: {json.dumps(data)}\n\n"
+                    time.sleep(0.1) # prevent flooding
+
+        except GeneratorExit:
+            # Client disconnected
+            pass
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            if 'sdr' in locals():
+                sdr.close()
+            # Restart background tracker if it was running before
+            if was_running:
+                start_tracker()
+
+    return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/config', methods=['GET', 'POST'])
 def config():
