@@ -4,6 +4,7 @@ import json
 import csv
 from datetime import datetime
 import numpy as np
+from scipy.signal import find_peaks
 from dotenv import load_dotenv
 
 # We will import pyrtlsdr later or handle it in the main block
@@ -50,6 +51,43 @@ def measure_signal_strength(samples):
 
     return np.max(power)
 
+def estimate_bpm(powers, times):
+    """
+    Estimates the Beats Per Minute (BPM) based on the recorded signal strength over time.
+    Uses peak detection to find the pulses.
+    """
+    if len(powers) < 3:
+        return 0.0
+
+    powers_np = np.array(powers)
+    times_np = np.array(times)
+
+    # Simple baseline removal to make peak detection easier
+    powers_centered = powers_np - np.median(powers_np)
+
+    # Find peaks.
+    # height depends on the SNR. We'll use a dynamic threshold based on the data.
+    # threshold could be something like 5 dB above median.
+    height_threshold = np.max([5.0, np.max(powers_centered) * 0.5])
+
+    peaks, _ = find_peaks(powers_centered, height=height_threshold, distance=3) # distance depends on sampling rate
+
+    if len(peaks) < 2:
+        return 0.0 # Not enough peaks to determine BPM
+
+    # Calculate intervals between peaks in seconds
+    peak_times = times_np[peaks]
+    intervals = np.diff(peak_times)
+
+    # Average interval
+    avg_interval = np.mean(intervals)
+
+    if avg_interval == 0:
+        return 0.0
+
+    bpm = 60.0 / avg_interval
+    return bpm
+
 def run_tracker(config, sdr_class=None):
     if not config['animals']:
         print("No animals configured to track. Exiting.")
@@ -73,7 +111,7 @@ def run_tracker(config, sdr_class=None):
     # Setup CSV logging
     with open(csv_filename, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(['Date/Time', 'Animal Name', 'Frequency (Hz)', 'Signal Strength (dB)', 'Latitude', 'Longitude'])
+        writer.writerow(['Date/Time', 'Animal Name', 'Frequency (Hz)', 'Signal Strength (dB)', 'BPM', 'Latitude', 'Longitude'])
 
         print(f"Starting tracking loop. Logging to {csv_filename}...")
 
@@ -89,18 +127,29 @@ def run_tracker(config, sdr_class=None):
                     start_time = time.time()
                     max_power = -float('inf')
 
+                    # Keep track of power over time to calculate BPM
+                    power_history = []
+                    time_history = []
+
                     # Scan for the specified duration
                     while time.time() - start_time < config['scan_time']:
+                        current_time = time.time()
                         # Read samples (e.g., 256 * 1024)
                         samples = sdr.read_samples(256 * 1024)
                         power = measure_signal_strength(samples)
+
+                        power_history.append(power)
+                        time_history.append(current_time)
+
                         if power > max_power:
                             max_power = power
 
-                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    print(f"[{timestamp}] {animal} ({freq} Hz): {max_power:.2f} dB")
+                    bpm = estimate_bpm(power_history, time_history)
 
-                    writer.writerow([timestamp, animal, freq, f"{max_power:.2f}", config['lat'], config['lon']])
+                    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    print(f"[{timestamp}] {animal} ({freq} Hz): Peak {max_power:.2f} dB, Est BPM: {bpm:.1f}")
+
+                    writer.writerow([timestamp, animal, freq, f"{max_power:.2f}", f"{bpm:.1f}", config['lat'], config['lon']])
                     file.flush()
 
         except KeyboardInterrupt:

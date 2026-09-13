@@ -16,15 +16,22 @@ class MockRtlSdr:
     def read_samples(self, num_samples):
         # Generate some noise
         samples = np.random.normal(scale=0.1, size=num_samples) + 1j * np.random.normal(scale=0.1, size=num_samples)
-        # Occasionally inject a strong signal if tuned to Bear_2 (150.5 MHz)
-        if self.center_freq == 150500000:
-            t = np.arange(num_samples) / self.sample_rate
-            # Simulated CW pulse
-            pulse = np.exp(2j * np.pi * 10000 * t)
-            samples += pulse
 
-        # Simulate some delay to represent actual sample reading time
-        time.sleep(0.01)
+        # Simulate some delay to represent actual sample reading time (~0.125s for 256k samples at 2.048Msps)
+        read_time = num_samples / self.sample_rate
+        time.sleep(read_time)
+
+        current_time = time.time()
+
+        # Inject a strong signal if tuned to Bear_2 (150.5 MHz) at a simulated 40 BPM (1 pulse every 1.5 seconds)
+        if self.center_freq == 150500000:
+            # We are pulsing for 100ms every 1.5s
+            if (current_time % 1.5) < 0.1:
+                t = np.arange(num_samples) / self.sample_rate
+                # Simulated CW pulse
+                pulse = 10 * np.exp(2j * np.pi * 10000 * t) # Make it strong so it stands out
+                samples += pulse
+
         return samples
 
     def close(self):
@@ -47,8 +54,8 @@ def run_test():
     t.start()
 
     # Let it run for enough time to scan both animals at least once
-    # SCAN_TIME_SECONDS in .env is 2, and we have 2 animals. So 5 seconds should be enough.
-    time.sleep(5)
+    # SCAN_TIME_SECONDS will be 10, and we have 2 animals. So 25 seconds should be enough.
+    time.sleep(25)
 
     print("\nStopping tracker thread.")
 
