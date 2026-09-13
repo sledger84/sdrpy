@@ -99,6 +99,7 @@ def config():
         # Update values
         set_key(env_path, 'SDR_GAIN', request.form.get('sdr_gain', 'auto'))
         set_key(env_path, 'SCAN_TIME_SECONDS', request.form.get('scan_time', '10'))
+        set_key(env_path, 'SIGNAL_THRESHOLD_DB', request.form.get('signal_threshold_db', '0.0'))
         set_key(env_path, 'GPS_LATITUDE', request.form.get('latitude', '0.0'))
         set_key(env_path, 'GPS_LONGITUDE', request.form.get('longitude', '0.0'))
 
@@ -117,6 +118,7 @@ def config():
     current_config = {
         'sdr_gain': os.getenv('SDR_GAIN', 'auto'),
         'scan_time': os.getenv('SCAN_TIME_SECONDS', '10'),
+        'signal_threshold_db': os.getenv('SIGNAL_THRESHOLD_DB', '0.0'),
         'lat': os.getenv('GPS_LATITUDE', '0.0'),
         'lon': os.getenv('GPS_LONGITUDE', '0.0'),
         'animals': os.getenv('ANIMALS_FREQUENCIES', '{}')
