@@ -3,6 +3,8 @@ import glob
 import csv
 import json
 import psutil
+import subprocess
+import sys
 from flask import Flask, render_template, request, redirect, url_for
 from dotenv import load_dotenv, set_key
 
@@ -19,6 +21,24 @@ def is_tracker_running():
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
             pass
     return False
+
+def start_tracker():
+    if not is_tracker_running():
+        # Run it in the background, redirecting output
+        subprocess.Popen([sys.executable, 'tracker.py'],
+                         stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+
+def stop_tracker():
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            cmdline = proc.info.get('cmdline')
+            if cmdline and 'python' in proc.info['name'].lower():
+                if any('tracker.py' in arg for arg in cmdline):
+                    proc.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
 
 def get_all_detections():
     """Reads all tracking_log_*.csv files and returns a list of dictionaries."""
@@ -81,6 +101,16 @@ def animal(name):
                            name=name,
                            history=animal_history)
 
+@app.route('/start', methods=['POST'])
+def start():
+    start_tracker()
+    return redirect(url_for('index'))
+
+@app.route('/stop', methods=['POST'])
+def stop():
+    stop_tracker()
+    return redirect(url_for('index'))
+
 @app.route('/config', methods=['GET', 'POST'])
 def config():
     env_path = '.env'
@@ -111,6 +141,11 @@ def config():
             set_key(env_path, 'ANIMALS_FREQUENCIES', animals_text)
         except json.JSONDecodeError:
             pass # Or handle error visually
+
+        # Restart if requested
+        if request.form.get('restart_tracker') == 'true':
+            stop_tracker()
+            start_tracker()
 
         return redirect(url_for('config'))
 

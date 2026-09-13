@@ -3,6 +3,8 @@
 {% block content %}
     <h2>Configuration Settings</h2>
 
+    <form method="POST" action="{{ url_for('config') }}" onsubmit="return promptRestartTracker()">
+        <input type="hidden" id="restart_tracker" name="restart_tracker" value="false">
     <form method="POST" action="{{ url_for('config') }}">
         <div style="margin-bottom: 15px;">
             <label for="sdr_gain">SDR Gain:</label><br>
@@ -40,6 +42,12 @@
     </form>
 
     <script>
+        function promptRestartTracker() {
+            var restart = confirm("Do you want to restart the tracker to apply these changes immediately?");
+            document.getElementById("restart_tracker").value = restart ? "true" : "false";
+            return true; // continue form submission
+        }
+
         function getLocation() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(showPosition, showError);

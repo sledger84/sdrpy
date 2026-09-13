@@ -5,6 +5,14 @@
     <p>Tracker Script:
         {% if tracker_running %}
             <span class="status-running">Running</span>
+            <form action="{{ url_for('stop') }}" method="POST" style="display:inline;">
+                <button type="submit" style="margin-left:10px;">Stop Tracker</button>
+            </form>
+        {% else %}
+            <span class="status-stopped">Stopped</span>
+            <form action="{{ url_for('start') }}" method="POST" style="display:inline;">
+                <button type="submit" style="margin-left:10px;">Start Tracker</button>
+            </form>
         {% else %}
             <span class="status-stopped">Stopped</span>
         {% endif %}
