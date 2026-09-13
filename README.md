@@ -50,3 +50,10 @@ python3 tracker.py
 ```
 
 The script will tune to each frequency for the specified scan time, calculate the signal strength using FFT, estimate the Beats Per Minute (BPM) based on signal pulses (40 BPM for moving, 80 BPM for stationary), and log the results (including time, animal name, frequency, peak signal strength, estimated BPM, and GPS coordinates) to a CSV file.
+
+### 7. Run the Web Interface
+A web dashboard is provided to monitor the logs and update settings.
+```bash
+python3 app.py
+```
+Open a web browser and navigate to `http://<raspberry_pi_ip>:5000` to view the dashboard and manage settings.
