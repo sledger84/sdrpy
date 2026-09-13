@@ -22,6 +22,8 @@ def load_config():
 
     scan_time = float(os.getenv('SCAN_TIME_SECONDS', '5'))
 
+    threshold = float(os.getenv('SIGNAL_THRESHOLD_DB', '0.0'))
+
     # GPS Location
     lat = os.getenv('GPS_LATITUDE', '0.0')
     lon = os.getenv('GPS_LONGITUDE', '0.0')
@@ -33,6 +35,7 @@ def load_config():
     return {
         'sdr_gain': sdr_gain,
         'scan_time': scan_time,
+        'threshold': threshold,
         'lat': lat,
         'lon': lon,
         'animals': animals_frequencies
@@ -147,10 +150,13 @@ def run_tracker(config, sdr_class=None):
                     bpm = estimate_bpm(power_history, time_history)
 
                     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    print(f"[{timestamp}] {animal} ({freq} Hz): Peak {max_power:.2f} dB, Est BPM: {bpm:.1f}")
 
-                    writer.writerow([timestamp, animal, freq, f"{max_power:.2f}", f"{bpm:.1f}", config['lat'], config['lon']])
-                    file.flush()
+                    if max_power >= config['threshold']:
+                        print(f"[{timestamp}] {animal} ({freq} Hz): Peak {max_power:.2f} dB, Est BPM: {bpm:.1f} (Detection Logged)")
+                        writer.writerow([timestamp, animal, freq, f"{max_power:.2f}", f"{bpm:.1f}", config['lat'], config['lon']])
+                        file.flush()
+                    else:
+                        print(f"[{timestamp}] {animal} ({freq} Hz): Peak {max_power:.2f} dB, Est BPM: {bpm:.1f} (Ignored - Below Threshold {config['threshold']} dB)")
 
         except KeyboardInterrupt:
             print("Tracking stopped by user.")
