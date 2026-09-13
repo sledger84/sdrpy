@@ -1,0 +1,6 @@
+pyrtlsdr
+python-dotenv
+numpy
+scipy
+Flask
+psutil

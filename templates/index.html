@@ -1,0 +1,48 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <h2>System Status</h2>
+    <p>Tracker Script:
+        {% if tracker_running %}
+            <span class="status-running">Running</span>
+            <form action="{{ url_for('stop') }}" method="POST" style="display:inline;">
+                <button type="submit" style="margin-left:10px;">Stop Tracker</button>
+            </form>
+        {% else %}
+            <span class="status-stopped">Stopped</span>
+            <form action="{{ url_for('start') }}" method="POST" style="display:inline;">
+                <button type="submit" style="margin-left:10px;">Start Tracker</button>
+            </form>
+        {% endif %}
+    </p>
+
+    <h2>Latest Detections</h2>
+    {% if latest %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Animal Name</th>
+                    <th>Last Detected</th>
+                    <th>Frequency (Hz)</th>
+                    <th>Peak Signal (dB)</th>
+                    <th>BPM</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for animal, data in latest.items() %}
+                <tr>
+                    <td><a href="{{ url_for('animal', name=animal) }}">{{ animal }}</a></td>
+                    <td>{{ data.get('Date/Time', 'N/A') }}</td>
+                    <td>{{ data.get('Frequency (Hz)', 'N/A') }}</td>
+                    <td>{{ data.get('Signal Strength (dB)', 'N/A') }}</td>
+                    <td>{{ data.get('BPM', 'N/A') }}</td>
+                    <td>{{ data.get('Status', 'Unknown') }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No detection logs found.</p>
+    {% endif %}
+{% endblock %}

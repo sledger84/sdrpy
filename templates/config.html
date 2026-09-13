@@ -1,0 +1,80 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <h2>Configuration Settings</h2>
+
+    <form method="POST" action="{{ url_for('config') }}" onsubmit="return promptRestartTracker()">
+        <input type="hidden" id="restart_tracker" name="restart_tracker" value="false">
+        <div style="margin-bottom: 15px;">
+            <label for="sdr_gain">SDR Gain:</label><br>
+            <input type="text" id="sdr_gain" name="sdr_gain" value="{{ config.sdr_gain }}" required>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label for="scan_time">Scan Time (seconds):</label><br>
+            <input type="number" id="scan_time" name="scan_time" value="{{ config.scan_time }}" step="any" required>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label for="signal_threshold_db">Signal Threshold (dB):</label><br>
+            <input type="number" id="signal_threshold_db" name="signal_threshold_db" value="{{ config.signal_threshold_db }}" step="any" required>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label for="latitude">Latitude:</label><br>
+            <input type="text" id="latitude" name="latitude" value="{{ config.lat }}" required>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label for="longitude">Longitude:</label><br>
+            <input type="text" id="longitude" name="longitude" value="{{ config.lon }}" required>
+            <br><button type="button" onclick="getLocation()" style="margin-top: 5px;">Use My Current Location</button>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+            <label for="animals">Animals & Frequencies (JSON):</label><br>
+            <textarea id="animals" name="animals" rows="6" cols="50" required>{{ config.animals_pretty }}</textarea>
+            <small style="display:block; color:#666;">Format: {"Animal_Name": frequency_in_hz}</small>
+        </div>
+
+        <button type="submit" style="padding: 10px 15px; background: #333; color: white; border: none; cursor: pointer;">Save Configuration</button>
+    </form>
+
+    <script>
+        function promptRestartTracker() {
+            var restart = confirm("Do you want to restart the tracker to apply these changes immediately?");
+            document.getElementById("restart_tracker").value = restart ? "true" : "false";
+            return true; // continue form submission
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, showError);
+            } else {
+                alert("Geolocation is not supported by this browser.");
+            }
+        }
+
+        function showPosition(position) {
+            document.getElementById("latitude").value = position.coords.latitude;
+            document.getElementById("longitude").value = position.coords.longitude;
+        }
+
+        function showError(error) {
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    alert("User denied the request for Geolocation.");
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    alert("Location information is unavailable.");
+                    break;
+                case error.TIMEOUT:
+                    alert("The request to get user location timed out.");
+                    break;
+                case error.UNKNOWN_ERROR:
+                    alert("An unknown error occurred.");
+                    break;
+            }
+        }
+    </script>
+{% endblock %}
