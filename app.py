@@ -6,8 +6,13 @@ import psutil
 import subprocess
 import sys
 import time
+import struct
+import numpy as np
+import io
+import wave
+from scipy import signal
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, Response
+from flask import Flask, render_template, request, redirect, url_for, Response, send_file
 from dotenv import load_dotenv, set_key
 
 # Import tracker logic for the stream
@@ -121,6 +126,113 @@ def stream_page():
     config = load_config()
     animals = list(config['animals'].keys())
     return render_template('stream.html', animals=animals)
+
+@app.route('/listen')
+def listen_page():
+    config = load_config()
+    animals = list(config['animals'].keys())
+    return render_template('listen.html', animals=animals)
+
+# Global SDR state for audio chunks to avoid slow initialization on every chunk fetch
+audio_sdr_instance = None
+audio_was_running = False
+
+@app.route('/audio_start')
+def audio_start():
+    """Initializes the SDR for listening."""
+    global audio_sdr_instance, audio_was_running
+    target = request.args.get('target')
+
+    if audio_sdr_instance:
+        return {"status": "already running"}
+
+    config = load_config()
+    if not target or target not in config['animals']:
+        return {"error": "Invalid target"}, 400
+
+    audio_was_running = is_tracker_running()
+    if audio_was_running:
+        stop_tracker()
+        time.sleep(0.5)
+
+    try:
+        from rtlsdr import RtlSdr
+        sdr_class = RtlSdr
+    except ImportError:
+        try:
+            from mock_tracker import MockRtlSdr
+            sdr_class = MockRtlSdr
+        except ImportError:
+            return {"error": "No SDR library"}, 500
+
+    try:
+        sdr = sdr_class()
+        sdr.sample_rate = 2.048e6
+        sdr.gain = config['sdr_gain']
+        sdr.center_freq = config['animals'][target]
+        time.sleep(0.1) # settle
+        audio_sdr_instance = sdr
+        return {"status": "started"}
+    except Exception as e:
+        if audio_was_running:
+            start_tracker()
+        return {"error": str(e)}, 500
+
+@app.route('/audio_stop')
+def audio_stop():
+    """Stops the SDR and resumes tracking."""
+    global audio_sdr_instance, audio_was_running
+    if audio_sdr_instance:
+        audio_sdr_instance.close()
+        audio_sdr_instance = None
+        if audio_was_running:
+            start_tracker()
+    return {"status": "stopped"}
+
+@app.route('/audio_chunk')
+def audio_chunk():
+    """Returns a short WAV chunk of demodulated CW audio."""
+    global audio_sdr_instance
+    if not audio_sdr_instance:
+        return {"error": "SDR not initialized"}, 400
+
+    sdr_sample_rate = 2.048e6
+    audio_sample_rate = 32000
+    decimation_factor = int(sdr_sample_rate / audio_sample_rate) # 64
+
+    # Read ~0.5 seconds of data (must be power of 2 for easy read_samples)
+    num_samples = 1048576
+
+    try:
+        samples = audio_sdr_instance.read_samples(num_samples)
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+    # CW Demodulation: mix with a 1kHz BFO
+    t = np.arange(len(samples)) / sdr_sample_rate
+    bfo_tone = np.exp(2j * np.pi * 1000 * t)
+    mixed = samples * bfo_tone
+
+    # Take real part (or magnitude) and decimate
+    # Using simple array slicing for speed to avoid IIR filter clicking
+    baseband = np.real(mixed)[::decimation_factor]
+
+    # Fixed scaling to prevent AGC noise pumping.
+    # The max value from the SDR is usually ~1.0. We scale it up, but clamp.
+    scaled = np.clip(baseband * 30000, -32768, 32767)
+    audio_pcm = np.int16(scaled)
+
+    # Create WAV in memory
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(audio_sample_rate)
+        wf.writeframes(audio_pcm.tobytes())
+
+    buf.seek(0)
+    return send_file(buf, mimetype='audio/wav')
+
 
 @app.route('/stream_feed')
 def stream_feed():
