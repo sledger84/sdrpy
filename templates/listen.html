@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+
+{% block content %}
+    <h2>Listen to Signal</h2>
+    <p>Select a target to listen to its audio transmission. Note: Playing audio will temporarily pause the background tracker script.</p>
+
+    <div style="margin-bottom: 20px;">
+        <label for="target_select">Target:</label>
+        <select id="target_select">
+            {% for animal in animals %}
+                <option value="{{ animal }}">{{ animal }}</option>
+            {% endfor %}
+        </select>
+
+        <button id="start_btn" onclick="startAudio()" style="margin-left: 10px; padding: 5px 10px; background: green; color: white; border: none; cursor: pointer;">Start Audio</button>
+        <button id="stop_btn" onclick="stopAudio()" style="margin-left: 10px; padding: 5px 10px; background: red; color: white; border: none; cursor: pointer;" disabled>Stop Audio</button>
+    </div>
+
+    <div>
+        <p id="statusMsg"></p>
+    </div>
+
+    <script>
+        const statusMsg = document.getElementById('statusMsg');
+        let audioContext;
+        let isPlaying = false;
+        let nextStartTime = 0;
+
+        async function startAudio() {
+            const target = document.getElementById('target_select').value;
+
+            document.getElementById('start_btn').disabled = true;
+            document.getElementById('stop_btn').disabled = false;
+            document.getElementById('target_select').disabled = true;
+
+            statusMsg.textContent = "Initializing SDR...";
+
+            // Start the backend SDR process
+            try {
+                let response = await fetch(`/audio_start?target=${target}`);
+                let json = await response.json();
+                if (json.error) {
+                    throw new Error(json.error);
+                }
+            } catch (e) {
+                statusMsg.textContent = "Error initializing SDR: " + e.message;
+                stopAudio();
+                return;
+            }
+
+            isPlaying = true;
+            statusMsg.textContent = `Listening to ${target}...`;
+
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            nextStartTime = audioContext.currentTime;
+
+            fetchAudioChunk();
+        }
+
+        async function fetchAudioChunk() {
+            if (!isPlaying) return;
+
+            try {
+                let response = await fetch('/audio_chunk');
+                if (!response.ok) {
+                    throw new Error("HTTP error " + response.status);
+                }
+
+                let arrayBuffer = await response.arrayBuffer();
+                let audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+                let source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+
+                // If we fell behind, reset the start time to now
+                if (nextStartTime < audioContext.currentTime) {
+                    nextStartTime = audioContext.currentTime;
+                }
+
+                source.start(nextStartTime);
+                nextStartTime += audioBuffer.duration;
+
+            } catch (e) {
+                console.error("Error fetching/playing chunk:", e);
+                statusMsg.textContent = "Error streaming audio.";
+            }
+
+            // Immediately schedule the next chunk
+            if (isPlaying) {
+                fetchAudioChunk();
+            }
+        }
+
+        async function stopAudio() {
+            isPlaying = false;
+
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+
+            try {
+                await fetch('/audio_stop');
+            } catch (e) {
+                console.error("Error stopping backend:", e);
+            }
+
+            document.getElementById('start_btn').disabled = false;
+            document.getElementById('stop_btn').disabled = true;
+            document.getElementById('target_select').disabled = false;
+
+            statusMsg.textContent = "Audio stopped.";
+        }
+    </script>
+{% endblock %}
